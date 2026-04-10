@@ -1,5 +1,7 @@
 import logging
+import os
 from typing import List, Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -15,6 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REDDIT_HEADERS = {"User-Agent": "sentiment-app/0.1"}
+SCRAPERAPI_KEY = os.environ.get("SCRAPERAPI_KEY")
 
 analyzer = SentimentIntensityAnalyzer()
 
@@ -66,15 +69,19 @@ def classify(compound: float) -> str:
 
 
 def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list:
-    """Fetch posts from Reddit's public JSON API. No credentials required."""
+    """Fetch posts from Reddit via ScraperAPI to bypass datacenter IP blocks."""
     if subreddit:
-        url = f"https://www.reddit.com/r/{subreddit}/search.json"
-        params = {"q": query, "limit": limit, "sort": "relevance", "restrict_sr": "on"}
+        reddit_url = f"https://www.reddit.com/r/{subreddit}/search.json"
+        reddit_params = {"q": query, "limit": limit, "sort": "relevance", "restrict_sr": "on"}
     else:
-        url = "https://www.reddit.com/search.json"
-        params = {"q": query, "limit": limit, "sort": "relevance"}
+        reddit_url = "https://www.reddit.com/search.json"
+        reddit_params = {"q": query, "limit": limit, "sort": "relevance"}
 
-    with httpx.Client(headers=REDDIT_HEADERS, timeout=10) as client:
+    target_url = f"{reddit_url}?{urlencode(reddit_params)}"
+    url = "http://api.scraperapi.com"
+    params = {"api_key": SCRAPERAPI_KEY, "url": target_url}
+
+    with httpx.Client(headers=REDDIT_HEADERS, timeout=30) as client:
         response = client.get(url, params=params)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit!r} not found.")
