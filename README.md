@@ -4,6 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/fadoua-bousalim/sentiment-backend/actions/workflows/ci.yml/badge.svg)
+![Deployed on Fly.io](https://img.shields.io/badge/deployed-fly.io-purple?logo=flydotio&logoColor=white)
 
 A lightweight REST API that searches Reddit for any keyword and returns **VADER sentiment analysis** across recent posts — with a built-in browser UI, no separate frontend needed.
 
@@ -16,7 +17,7 @@ A lightweight REST API that searches Reddit for any keyword and returns **VADER 
 - **VADER NLP** — fast, lexicon-based sentiment scoring (positive / neutral / negative)
 - **Built-in UI** — visit `/` for a zero-dependency browser interface
 - **Interactive API docs** at `/docs` (Swagger) and `/redoc` (ReDoc)
-- One-command deploy to **Render** or **Koyeb** (both have free tiers)
+- Deployed on **[Fly.io](https://sentiment-analysis-flyio.fly.dev/)** (free tier)
 
 ## Quick start
 
@@ -91,17 +92,9 @@ Browser / API client
 
 ## Deploy
 
-### Render (free)
+Deployed on **Fly.io**: https://sentiment-analysis-flyio.fly.dev/
 
-1. Push this repo to GitHub.
-2. Go to [render.com](https://render.com) → **New → Web Service** → connect your repo.
-3. Deploy — you'll get a public URL like `https://reddit-sentiment.onrender.com`.
-
-> **Note:** Render's free tier sleeps after 15 min of inactivity; the first request after sleep takes ~30 s to wake.
-
-### Koyeb
-
-A `koyeb.yaml` is included. Push the repo and connect it in the Koyeb dashboard — no secrets needed.
+A `Dockerfile` and `fly.toml` are included. Connect the repo in the [Fly.io dashboard](https://fly.io/dashboard) — no secrets needed.
 
 ## Development
 
