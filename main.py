@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import List, Optional
 from urllib.parse import urlencode
 
@@ -18,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 REDDIT_HEADERS = {"User-Agent": "sentiment-app/0.1"}
 SCRAPERAPI_KEY = os.environ.get("SCRAPERAPI_KEY")
+CACHE_TTL = 300  # seconds
 
 analyzer = SentimentIntensityAnalyzer()
+_cache: dict = {}
 
 # ---------- Models ----------
 class PostSentiment(BaseModel):
@@ -68,8 +71,14 @@ def classify(compound: float) -> str:
     return "neutral"
 
 
-def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list:
-    """Fetch posts from Reddit via ScraperAPI to bypass datacenter IP blocks."""
+async def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list:
+    """Fetch posts from Reddit via ScraperAPI, with in-memory TTL cache."""
+    cache_key = (query, limit, subreddit)
+    cached = _cache.get(cache_key)
+    if cached and time.time() - cached["ts"] < CACHE_TTL:
+        logger.info("cache hit query=%r", query)
+        return cached["data"]
+
     if subreddit:
         reddit_url = f"https://www.reddit.com/r/{subreddit}/search.json"
         reddit_params = {"q": query, "limit": limit, "sort": "relevance", "restrict_sr": "on"}
@@ -78,15 +87,16 @@ def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list:
         reddit_params = {"q": query, "limit": limit, "sort": "relevance"}
 
     target_url = f"{reddit_url}?{urlencode(reddit_params)}"
-    url = "http://api.scraperapi.com"
     params = {"api_key": SCRAPERAPI_KEY, "url": target_url}
 
-    with httpx.Client(headers=REDDIT_HEADERS, timeout=30) as client:
-        response = client.get(url, params=params)
+    async with httpx.AsyncClient(headers=REDDIT_HEADERS, timeout=30) as client:
+        response = await client.get("http://api.scraperapi.com", params=params)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit!r} not found.")
         response.raise_for_status()
-        return response.json()["data"]["children"]
+        data = response.json()["data"]["children"]
+        _cache[cache_key] = {"data": data, "ts": time.time()}
+        return data
 
 
 @app.get("/health", summary="Health check")
@@ -96,14 +106,14 @@ def health() -> dict:
 
 
 @app.get("/analyze", response_model=AnalyzeResponse, summary="Analyze Reddit sentiment")
-def analyze(
+async def analyze(
     query: str = Query(..., min_length=1, description="Keyword or phrase to search on Reddit"),
     limit: int = Query(25, ge=1, le=100, description="Number of posts to fetch (1–100)"),
     subreddit: Optional[str] = Query(None, description="Restrict to a specific subreddit, e.g. 'python'"),
 ) -> AnalyzeResponse:
     """Fetch Reddit posts matching *query* and return per-post and aggregate VADER sentiment."""
     try:
-        children = _fetch_posts(query, limit, subreddit)
+        children = await _fetch_posts(query, limit, subreddit)
     except HTTPException:
         raise
     except httpx.HTTPStatusError as exc:
