@@ -87,10 +87,16 @@ async def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list
         reddit_params = {"q": query, "limit": limit, "sort": "relevance"}
 
     target_url = f"{reddit_url}?{urlencode(reddit_params)}"
-    params = {"api_key": SCRAPERAPI_KEY, "url": target_url}
+
+    if SCRAPERAPI_KEY:
+        fetch_url = "http://api.scraperapi.com"
+        params = {"api_key": SCRAPERAPI_KEY, "url": target_url}
+    else:
+        fetch_url = target_url
+        params = {}
 
     async with httpx.AsyncClient(headers=REDDIT_HEADERS, timeout=30) as client:
-        response = await client.get("http://api.scraperapi.com", params=params)
+        response = await client.get(fetch_url, params=params)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit!r} not found.")
         response.raise_for_status()
