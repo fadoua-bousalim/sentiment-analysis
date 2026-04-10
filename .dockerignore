@@ -3,3 +3,12 @@ fly.toml
 __pycache__/
 .envrc
 .venv/
+.git
+.github
+tests/
+requirements-dev.txt
+koyeb.yaml
+Procfile
+README.md
+LICENSE
+*.md
