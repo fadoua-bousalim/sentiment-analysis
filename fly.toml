@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for app-icy-wildflower-5745 on 2026-04-10T16:40:48Z
+# fly.toml app configuration file generated for sentiment-analysis-flyio on 2026-04-10T16:44:15Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'app-icy-wildflower-5745'
+app = 'sentiment-analysis-flyio'
 primary_region = 'iad'
 
 [build]
@@ -16,6 +16,11 @@ primary_region = 'iad'
   min_machines_running = 0
   processes = ['app']
 
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
   [http_service.concurrency]
     type = "connections"
     hard_limit = 25
