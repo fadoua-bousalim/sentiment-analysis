@@ -15,13 +15,6 @@ services:
       - http:
           path: /health
           port: 8000
-    env:
-      - key: REDDIT_CLIENT_ID
-        secret: reddit-client-id
-      - key: REDDIT_CLIENT_SECRET
-        secret: reddit-client-secret
-      - key: REDDIT_USER_AGENT
-        value: sentiment-app/0.1
     git:
       branch: main
       build_command: pip install -r requirements.txt

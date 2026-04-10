@@ -1,18 +1,12 @@
 import logging
-import os
-from contextlib import asynccontextmanager
 from typing import List, Optional
 
-import praw
-import prawcore
-from dotenv import load_dotenv
+import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,38 +14,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------- Config ----------
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "sentiment-app/0.1")
-
-# ---------- Clients ----------
-# Instantiate only when credentials are present; the /analyze endpoint guards
-# against a None client and returns 503 if they are missing.
-if REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET:
-    reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent=REDDIT_USER_AGENT,
-    )
-    reddit.read_only = True
-else:
-    reddit = None
+REDDIT_HEADERS = {"User-Agent": "sentiment-app/0.1"}
 
 analyzer = SentimentIntensityAnalyzer()
-
-
-# ---------- Lifespan ----------
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
-        logger.warning(
-            "REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET not set — /analyze will return 503."
-        )
-    else:
-        logger.info("Reddit credentials loaded. App ready.")
-    yield
-
 
 # ---------- Models ----------
 class PostSentiment(BaseModel):
@@ -77,7 +42,6 @@ app = FastAPI(
     title="Reddit Sentiment API",
     version="0.1.0",
     description="Search Reddit for any keyword and get VADER sentiment scores across recent posts.",
-    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -101,13 +65,27 @@ def classify(compound: float) -> str:
     return "neutral"
 
 
+def _fetch_posts(query: str, limit: int, subreddit: Optional[str]) -> list:
+    """Fetch posts from Reddit's public JSON API. No credentials required."""
+    if subreddit:
+        url = f"https://www.reddit.com/r/{subreddit}/search.json"
+        params = {"q": query, "limit": limit, "sort": "relevance", "restrict_sr": "on"}
+    else:
+        url = "https://www.reddit.com/search.json"
+        params = {"q": query, "limit": limit, "sort": "relevance"}
+
+    with httpx.Client(headers=REDDIT_HEADERS, timeout=10) as client:
+        response = client.get(url, params=params)
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit!r} not found.")
+        response.raise_for_status()
+        return response.json()["data"]["children"]
+
+
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    """Return service liveness and whether Reddit credentials are configured."""
-    return {
-        "status": "ok",
-        "reddit_configured": bool(REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET),
-    }
+    """Return service liveness."""
+    return {"status": "ok"}
 
 
 @app.get("/analyze", response_model=AnalyzeResponse, summary="Analyze Reddit sentiment")
@@ -117,21 +95,14 @@ def analyze(
     subreddit: Optional[str] = Query(None, description="Restrict to a specific subreddit, e.g. 'python'"),
 ) -> AnalyzeResponse:
     """Fetch Reddit posts matching *query* and return per-post and aggregate VADER sentiment."""
-    if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
-        raise HTTPException(
-            status_code=503,
-            detail="Reddit credentials not configured. Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET.",
-        )
-
     try:
-        source = reddit.subreddit(subreddit) if subreddit else reddit.subreddit("all")
-        submissions = list(source.search(query, limit=limit, sort="relevance"))
-    except prawcore.exceptions.Redirect:
-        raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit!r} not found.")
-    except prawcore.exceptions.ResponseException as exc:
+        children = _fetch_posts(query, limit, subreddit)
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
         logger.error("Reddit API error: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Reddit API error: {exc.response.status_code}")
-    except prawcore.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Reddit returned {exc.response.status_code}.")
+    except httpx.RequestError as exc:
         logger.error("Reddit network error: %s", exc)
         raise HTTPException(status_code=502, detail="Could not reach Reddit. Try again later.")
 
@@ -139,8 +110,9 @@ def analyze(
     pos = neu = neg = 0
     compound_sum = 0.0
 
-    for s in submissions:
-        text = f"{s.title}. {s.selftext or ''}"
+    for child in children:
+        s = child["data"]
+        text = f"{s['title']}. {s.get('selftext') or ''}"
         scores = analyzer.polarity_scores(text)
         label = classify(scores["compound"])
         compound_sum += scores["compound"]
@@ -152,11 +124,11 @@ def analyze(
             neu += 1
         posts.append(
             PostSentiment(
-                title=s.title,
-                url=f"https://reddit.com{s.permalink}",
-                subreddit=str(s.subreddit),
-                score=s.score,
-                num_comments=s.num_comments,
+                title=s["title"],
+                url=f"https://reddit.com{s['permalink']}",
+                subreddit=s["subreddit"],
+                score=s["score"],
+                num_comments=s["num_comments"],
                 sentiment=label,
                 compound=round(scores["compound"], 4),
             )

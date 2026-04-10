@@ -1,10 +1,24 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import httpx
 from fastapi.testclient import TestClient
 
 from main import app, classify
 
 client = TestClient(app)
+
+MOCK_CHILDREN = [
+    {
+        "data": {
+            "title": "Python is amazing",
+            "selftext": "I love Python for data science.",
+            "permalink": "/r/python/comments/abc123/python_is_amazing/",
+            "subreddit": "python",
+            "score": 100,
+            "num_comments": 42,
+        }
+    }
+]
 
 
 # ---------- classify() ----------
@@ -39,9 +53,7 @@ class TestClassify:
 def test_health_returns_ok():
     response = client.get("/health")
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert "reddit_configured" in data
+    assert response.json() == {"status": "ok"}
 
 
 # ---------- / ----------
@@ -57,15 +69,9 @@ def test_index_returns_html():
 # ---------- /analyze ----------
 
 
-def test_analyze_missing_credentials():
-    with patch("main.REDDIT_CLIENT_ID", None):
-        response = client.get("/analyze?query=python")
-    assert response.status_code == 503
-
-
 def test_analyze_missing_query_param():
     response = client.get("/analyze")
-    assert response.status_code == 422  # FastAPI validation error
+    assert response.status_code == 422
 
 
 def test_analyze_limit_too_low():
@@ -79,20 +85,7 @@ def test_analyze_limit_too_high():
 
 
 def test_analyze_returns_results():
-    mock_post = MagicMock()
-    mock_post.title = "Python is amazing"
-    mock_post.selftext = "I love Python for data science."
-    mock_post.permalink = "/r/python/comments/abc123/python_is_amazing/"
-    mock_post.subreddit = MagicMock(__str__=lambda _: "python")
-    mock_post.score = 100
-    mock_post.num_comments = 42
-
-    with (
-        patch("main.REDDIT_CLIENT_ID", "fake_id"),
-        patch("main.REDDIT_CLIENT_SECRET", "fake_secret"),
-        patch("main.reddit") as mock_reddit,
-    ):
-        mock_reddit.subreddit.return_value.search.return_value = [mock_post]
+    with patch("main._fetch_posts", return_value=MOCK_CHILDREN):
         response = client.get("/analyze?query=python&limit=1")
 
     assert response.status_code == 200
@@ -106,12 +99,7 @@ def test_analyze_returns_results():
 
 
 def test_analyze_empty_results():
-    with (
-        patch("main.REDDIT_CLIENT_ID", "fake_id"),
-        patch("main.REDDIT_CLIENT_SECRET", "fake_secret"),
-        patch("main.reddit") as mock_reddit,
-    ):
-        mock_reddit.subreddit.return_value.search.return_value = []
+    with patch("main._fetch_posts", return_value=[]):
         response = client.get("/analyze?query=xyzzy_nonexistent")
 
     assert response.status_code == 200
@@ -119,3 +107,17 @@ def test_analyze_empty_results():
     assert data["total"] == 0
     assert data["avg_compound"] == 0.0
     assert data["posts"] == []
+
+
+def test_analyze_network_error_returns_502():
+    with patch("main._fetch_posts", side_effect=httpx.RequestError("timeout")):
+        response = client.get("/analyze?query=python")
+    assert response.status_code == 502
+
+
+def test_analyze_invalid_subreddit_returns_404():
+    from fastapi import HTTPException
+
+    with patch("main._fetch_posts", side_effect=HTTPException(status_code=404, detail="not found")):
+        response = client.get("/analyze?query=python&subreddit=thisdoesnotexist99999")
+    assert response.status_code == 404

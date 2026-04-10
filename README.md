@@ -11,6 +11,7 @@ A lightweight REST API that searches Reddit for any keyword and returns **VADER 
 
 ## Features
 
+- **No API key required** — uses Reddit's public JSON endpoints
 - **Keyword search** across all of Reddit or a specific subreddit
 - **VADER NLP** — fast, lexicon-based sentiment scoring (positive / neutral / negative)
 - **Built-in UI** — visit `/` for a zero-dependency browser interface
@@ -18,20 +19,6 @@ A lightweight REST API that searches Reddit for any keyword and returns **VADER 
 - One-command deploy to **Render** or **Koyeb** (both have free tiers)
 
 ## Quick start
-
-### 1. Get Reddit API credentials
-
-Go to **https://www.reddit.com/prefs/apps** → *create app* → choose **script** type.  
-Copy the **client ID** (short string under the app name) and the **secret**.
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-# fill in REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET
-```
-
-### 3. Install and run
 
 ```bash
 pip install -r requirements.txt
@@ -94,7 +81,7 @@ Browser / API client
         │
         ▼
    FastAPI app
-        ├── praw ──► Reddit Search API ──► raw posts
+        ├── httpx ──► Reddit public JSON API ──► raw posts
         └── vaderSentiment ──► compound score [-1, 1] per post
                                     │
                                     └── classify: positive / neutral / negative
@@ -102,37 +89,19 @@ Browser / API client
 
 [VADER](https://github.com/cjhutto/vaderSentiment) (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based model tuned for social-media text — it handles slang, punctuation emphasis, and emoji without any training data.
 
-## Environment variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `REDDIT_CLIENT_ID` | Yes | — | Reddit app client ID |
-| `REDDIT_CLIENT_SECRET` | Yes | — | Reddit app client secret |
-| `REDDIT_USER_AGENT` | No | `sentiment-app/0.1` | Identifies your app to Reddit's API |
-
 ## Deploy
 
 ### Render (free)
 
 1. Push this repo to GitHub.
 2. Go to [render.com](https://render.com) → **New → Web Service** → connect your repo.
-3. Add `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` as environment secrets in the Render dashboard.
-4. Deploy — you'll get a public URL like `https://reddit-sentiment.onrender.com`.
+3. Deploy — you'll get a public URL like `https://reddit-sentiment.onrender.com`.
 
 > **Note:** Render's free tier sleeps after 15 min of inactivity; the first request after sleep takes ~30 s to wake.
 
 ### Koyeb
 
-A `koyeb.yaml` is included for one-command deployment. Koyeb injects environment variables directly — no `.env` file is used.
-
-In the Koyeb dashboard, create two **Secrets** with these exact names before deploying:
-
-| Secret name | Value |
-|-------------|-------|
-| `reddit-client-id` | your Reddit client ID |
-| `reddit-client-secret` | your Reddit client secret |
-
-Then push the repo and deploy — `koyeb.yaml` wires those secrets to the right env vars automatically.
+A `koyeb.yaml` is included. Push the repo and connect it in the Koyeb dashboard — no secrets needed.
 
 ## Development
 
