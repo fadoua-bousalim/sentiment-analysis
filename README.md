@@ -87,7 +87,7 @@ Browser / API client
                                     └── classify: positive / neutral / negative
 ```
 
-[VADER](https://github.com/cjhutto/vaderSentiment) (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based model tuned for social-media text - it handles slang, punctuation emphasis, and emoji without any training data. It is limited as it does not detect all semantics, but we are using it here as it's an open source free project. A better option would be a bigger model which can be fine tuned, or a transformers model.
+[VADER](https://github.com/cjhutto/vaderSentiment) (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based model optimized for social media text. It excels at handling slang, punctuation emphasis, and emojis without training data. While limited in capturing full semantics (lexicon-focused), it's ideal here as a free, open-source option. For production, consider fine-tunable models or transformer-based ones (e.g., BERT) that analyze context beyond lexicon.
 
 ## Deploy
 
